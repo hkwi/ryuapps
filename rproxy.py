@@ -8,11 +8,8 @@ import ryu.base.app_manager
 import ryu.controller.dpset as dpset
 
 from webob import Response
-from webob.exc import *
-
 from ryu.app.wsgi import route
 from ryu.ofproto.ofproto_parser import MsgBase
-from ryu.ofproto import *
 from ryu.controller.handler import set_ev_cls, MAIN_DISPATCHER
 
 api_expect = dict([
