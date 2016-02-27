@@ -6,7 +6,6 @@ import ryu.cfg
 import ryu.lib.hub
 import ryu.base.app_manager
 import ryu.controller.dpset as dpset
-import ofpstr.ofp4
 
 from webob import Response
 from webob.exc import *
@@ -48,8 +47,6 @@ class RProxy(ryu.base.app_manager.RyuApp):
 	_CONTEXTS = {
 		"wsgi": ryu.app.wsgi.WSGIApplication,
 	}
-
-	OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
 	def __init__(self, *args, **kwargs):
 		super(RProxy, self).__init__(*args, **kwargs)
