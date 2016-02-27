@@ -16,13 +16,13 @@ from ryu.ofproto import *
 from ryu.controller.handler import set_ev_cls, MAIN_DISPATCHER
 
 api_expect = dict([
-	(ofproto_v1_3_parser.OFPEchoRequest, ofproto_v1_3_parser.OFPEchoReply),
-	(ofproto_v1_3_parser.OFPFeaturesRequest, ofproto_v1_3_parser.OFPSwitchFeatures),
-	(ofproto_v1_3_parser.OFPGetConfigRequest, ofproto_v1_3_parser.OFPGetConfigReply),
-	(ofproto_v1_3_parser.OFPBarrierRequest, ofproto_v1_3_parser.OFPBarrierReply),
-	(ofproto_v1_3_parser.OFPQueueGetConfigRequest, ofproto_v1_3_parser.OFPQueueGetConfigReply),
-	(ofproto_v1_3_parser.OFPRoleRequest, ofproto_v1_3_parser.OFPRoleReply),
-	(ofproto_v1_3_parser.OFPGetAsyncRequest, ofproto_v1_3_parser.OFPGetAsyncReply),
+	("OFPEchoRequest", "OFPEchoReply"),
+	("OFPFeaturesRequest", "OFPSwitchFeatures"),
+	("OFPGetConfigRequest", "OFPGetConfigReply"),
+	("OFPBarrierRequest", "OFPBarrierReply"),
+	("OFPQueueGetConfigRequest", "OFPQueueGetConfigReply"),
+	("OFPRoleRequest", "OFPRoleReply"),
+	("OFPGetAsyncRequest", "OFPGetAsyncReply"),
 ])
 
 class RProxyHttp(ryu.app.wsgi.ControllerBase):
@@ -79,21 +79,17 @@ class RProxy(ryu.base.app_manager.RyuApp):
 		delete(self.activation[datapath.id])
 
 	def rhandle(self, datapath, sock):
-		cls_list = []
-		stats_list = []
+		msg_cls = dict()
+		stats_cls = dict()
 		for name in dir(datapath.ofproto_parser):
 			t = getattr(datapath.ofproto_parser, name)
 			if type(t)==type and issubclass(t, MsgBase) and hasattr(t, "cls_msg_type"):
 				if hasattr(t, "cls_stats_type"):
-					stats_list.append(t)
+					stats_cls[name] = t
 				else:
-					cls_list.append(t)
+					msg_cls[name] = t
 		
-		barrier_cls = [None, None]
-		if "OFPBarrierRequest" in dir(datapath.ofproto_parser):
-			barrier_cls[0] = getattr(datapath.ofproto_parser, "OFPBarrierRequest")
-		if "OFPBarrierReply" in dir(datapath.ofproto_parser):
-			barrier_cls[1] = getattr(datapath.ofproto_parser, "OFPBarrierReply")
+		barrier = msg_cls.get("OFPBarrierRequest")
 		
 		xid = 0
 		sock.send(struct.pack("!BBHI", datapath.ofproto.OFP_VERSION, 0, 8, 1))
@@ -108,39 +104,39 @@ class RProxy(ryu.base.app_manager.RyuApp):
 			if phdr[1] == 0:
 				continue # skip hello
 			
-			if barrier_cls[0] and phdr[1]==barrier_cls[0].cls_msg_type:
+			if barrier and barrier.cls_msg_type==phdr[1]:
 				# api wants to handle barrier
-				rmsg = struct.pack("!BBHI", phdr[0], barrier_cls[1].cls_msg_type, 8, phdr[3])
+				rmsg = struct.pack("!BBHI", phdr[0], msg_cls["OFPBarrierReply"].cls_msg_type, 8, phdr[3])
 				sock.send(rmsg)
 				continue
 			
-			is_multi = False
 			reply_cls = None
 			reply_multi = False
-			for cls in stats_list:
+			for cls in stats_cls.values():
 				if phdr[1] == cls.cls_msg_type:
-					is_multi = True
+					reply_multi = True
 					break
 			
-			if is_multi:
+			if reply_multi:
 				stats_type = struct.unpack_from("!H", pmsg, 8)[0]
-				for cls in stats_list:
+				for cls in stats_cls.values():
 					if cls.cls_stats_type != stats_type:
 						continue
-					reply_multi = True
 					if cls.cls_msg_type == phdr[1]:
 						continue
 					reply_cls = cls
 					break
 			else:
-				for req in cls_list:
+				for name, req in msg_cls.items():
 					if req.cls_msg_type == phdr[1]:
-						reply_cls = api_expect.get(req)
+						rname = api_expect.get(name)
+						if rname:
+							reply_cls = msg_cls[rname]
 			
 			rmsgs = api.send_msg(self, RawMsg(datapath, pmsg),
 					reply_cls=reply_cls,
 					reply_multi=reply_multi)
-			if is_multi:
+			if reply_multi:
 				for r in rmsgs:
 					h = struct.unpack_from("!BBHI", r.buf)
 					sock.send(struct.pack("!BBHI", h[0], h[1], h[2], phdr[3])+r.buf[8:])
