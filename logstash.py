@@ -6,9 +6,9 @@ from ryu.controller import dpset
 from ryu.lib import hub
 
 def to_jsondict(obj):
-	for __type, v in obj.to_jsondict().items():
+	for name, v in obj.to_jsondict().items():
 		# We'll use C# style type hinting
-		v["__type"] = __type
+		v["ryu"] = name
 		return v
 
 class Logstash(ryu.base.app_manager.RyuApp):
@@ -33,7 +33,7 @@ class Logstash(ryu.base.app_manager.RyuApp):
 		super(Logstash, self).__init__(*args, **kwargs)
 		self.dpset = kwargs["dpset"]
 		self.CONF.register_opts([
-			ryu.cfg.IntOpt("logstash_interval", default=10, help="logstash collection interval"),
+			ryu.cfg.IntOpt("logstash_interval", default=60, help="logstash collection interval"),
 			ryu.cfg.StrOpt("logstash_host", default="127.0.0.1", help="logstash server addr"),
 			ryu.cfg.IntOpt("logstash_port", default=25827, help="logstash server port"),
 		])
