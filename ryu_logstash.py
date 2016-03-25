@@ -71,13 +71,14 @@ class Base(object):
 		self.meter_stats()
 	
 	def send(self, unit, req, tm):
-		obj = to_jsondict(unit)
-		obj["datapath_id"] = self.datapath.id
-		obj["datapath_hex"] = hex(self.datapath.id)
-		obj["ofp_version"] = self.datapath.ofproto.OFP_VERSION
-		obj["request"] = to_jsondict(req)
-		obj["rtt"] = time.time()-tm
-		self.logstash.send(msgpack.dumps(obj))
+		with OxmJsonPatch(self.datapath.ofproto):
+			obj = to_jsondict(unit)
+			obj["datapath_id"] = self.datapath.id
+			obj["datapath_hex"] = hex(self.datapath.id)
+			obj["ofp_version"] = self.datapath.ofproto.OFP_VERSION
+			obj["request"] = to_jsondict(req)
+			obj["rtt"] = time.time()-tm
+			self.logstash.send(msgpack.dumps(obj))
 
 	def aggregate_stats(self):
 		datapath = self.datapath
@@ -261,3 +262,39 @@ class V3(Base):
 			for b in msg.body:
 				self.send(b, req, tm)
 
+
+class OxmJsonPatch(object):
+	@staticmethod
+	def _to_jsondict(k, uv):
+		if isinstance(uv, tuple):
+			payload = dict(value=uv[0], mask=uv[1])
+		else:
+			payload = dict(value=uv)
+		return {k:payload, "__type":"OXMTlv"}
+	
+	@staticmethod
+	def _from_jsondict(j):
+		ks = [k for k in j.keys() if not k.startswith("__")]
+		assert len(ks) == 1
+		field = ks[0]
+		value = j[field]["value"]
+		mask = j[field].get("mask")
+		if mask is None:
+			return (field, value)
+		else:
+			return (field, (value, mask))
+	
+	def __init__(self, module):
+		self.module = module
+		self.save = (
+			module.oxm_from_jsondict,
+			module.oxm_to_jsondict,
+		)
+	
+	def __enter__(self):
+		self.module.oxm_from_jsondict = OxmJsonPatch._from_jsondict
+		self.module.oxm_to_jsondict = OxmJsonPatch._to_jsondict
+
+	def __exit__(self, exc_type, exc_value, traceback):
+		self.module.oxm_from_jsondict = self.save[0]
+		self.module.oxm_to_jsondict = self.save[1]
