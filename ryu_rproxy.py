@@ -34,7 +34,7 @@ class RProxyHttp(ryu.app.wsgi.ControllerBase):
 			if sock:
 				data.append(dict(
 					datapath_id=dpid,
-					datapath_hex=hex(dpid),
+					datapath_hex="0x%x" % dpid,
 					sockname=sock.getsockname()))
 		
 		return Response(json=data)
