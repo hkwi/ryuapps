@@ -73,8 +73,7 @@ class Base(object):
 	def send(self, unit, req, tm):
 		with OxmJsonPatch(self.datapath.ofproto):
 			obj = to_jsondict(unit)
-			obj["datapath_id"] = self.datapath.id
-			obj["datapath_hex"] = hex(self.datapath.id)
+			obj["datapath_hex"] = "0x%x" % self.datapath.id
 			obj["ofp_version"] = self.datapath.ofproto.OFP_VERSION
 			obj["request"] = to_jsondict(req)
 			obj["rtt"] = time.time()-tm
