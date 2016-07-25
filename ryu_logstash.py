@@ -1,3 +1,4 @@
+import contextlib
 import socket
 import time
 import msgpack
@@ -51,9 +52,9 @@ class Logstash(ryu.base.app_manager.RyuApp):
 	def task(self, datapath):
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		s.connect((self.CONF.logstash.host, self.CONF.logstash.port))
-		
-		tcls = {1:V1, 3:V3}.get(datapath.ofproto.OFP_VERSION, Base)
-		tcls(self, s, datapath).collect()
+		with contextlib.closing(s):
+			tcls = {1:V1, 3:V3}.get(datapath.ofproto.OFP_VERSION, Base)
+			tcls(self, s, datapath).collect()
 
 class Base(object):
 	def __init__(self, app, logstash, datapath):
