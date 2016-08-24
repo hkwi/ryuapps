@@ -30,50 +30,82 @@ class RProxyHttp(ryu.app.wsgi.ControllerBase):
 	@route("list_rproxy", "/rproxy")
 	def list_rproxy(self, req, **kwargs):
 		data = []
-		for dpid,sock in self.app.accepting_sockets.items():
-			if sock:
-				data.append(dict(
-					datapath_id=dpid,
-					datapath_hex="0x%x" % dpid,
-					sockname=sock.getsockname()))
+		for dpid,sockname in self.app.accepting_sockets.items():
+			data.append(dict(
+				datapath_id=dpid,
+				datapath_hex="0x%x" % dpid,
+				sockname=sockname))
 		
 		return Response(json=data)
+	
+	@route("list_rproxy", "/rproxy/{dpid}")
+	def op_rproxy(self, req, dpid, **kwargs):
+		if dpid.lower().startswith("0x"):
+			dpid = int(dpid, 16)
+		else:
+			dpid = int(dpid)
+		
+		if "up" in req.params:
+			if self.app.accepting_sockets[dpid] is None:
+				self.app.setup_rproxy(dpid)
+		elif "down" in req.params:
+			self.app.shutdown_rproxy(dpid)
+		
+		return Response(json=dict(
+			datapath_id=dpid,
+			datapath_hex="0x%x" % dpid,
+			sockname=self.app.accepting_sockets[dpid]))
 
 
 class RProxy(ryu.base.app_manager.RyuApp):
 	_CONTEXTS = {
 		"wsgi": ryu.app.wsgi.WSGIApplication,
+		"dpset": dpset.DPSet,
 	}
 
 	def __init__(self, *args, **kwargs):
 		super(RProxy, self).__init__(*args, **kwargs)
 		kwargs["wsgi"].register(RProxyHttp, self)
+		self.dpset = kwargs["dpset"]
 		self.CONF.register_opts([
+			ryu.cfg.BoolOpt("rproxy_auto", default=True, help="automatically open proxy socket"),
 			ryu.cfg.IntOpt("rproxy_socket_backlog", default=2, help="proxy socket listen arg"),
 			ryu.cfg.StrOpt("rproxy_addr", default="", help="proxy socket listen arg")
 		])
-		self.accepting_sockets = {} # datapath_id => running(bool)
+		self.accepting_sockets = {} # datapath_id => listening socket
 
 	@set_ev_cls(dpset.EventDP, dpset.DPSET_EV_DISPATCHER)
-	def setup_proxy(self, ev):
+	def prepare_rproxy(self, ev):
 		if ev.enter:
-			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			s.bind((self.CONF.rproxy_addr, 0))
-			s.listen(self.CONF.rproxy_socket_backlog)
-			self.accepting_sockets[ev.dp.id] = s
-			ryu.lib.hub.spawn(self.rproxy, ev.dp, s)
+			if self.CONF.rproxy_auto:
+				self.setup_rproxy(ev.dp.id)
 		else:
-			self.accepting_sockets[ev.dp.id] = None
+			self.shutdown_rproxy(ev.dp.id)
 
-	def rproxy(self, datapath, sock):
+	def setup_rproxy(self, dpid):
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		sock.bind((self.CONF.rproxy_addr, 0))
+		sock.listen(self.CONF.rproxy_socket_backlog)
+		self.accepting_sockets[dpid] = sock.getsockname()
+		ryu.lib.hub.spawn(self.rproxy, dpid, sock)
+
+	def shutdown_rproxy(self, dpid):
+		dp = self.dpset.get(dpid)
+		self.accepting_sockets[dpid] = None
+
+	def rproxy(self, dpid, sock):
+		dp = self.dpset.get(dpid)
+		sock.settimeout(3)
 		ths = []
-		while self.accepting_sockets[datapath.id]:
-			con, addr = sock.accept()
-			ths.append(ryu.lib.hub.spawn(self.rhandle, datapath, con))
+		while self.accepting_sockets[dpid]:
+			try:
+				con, addr = sock.accept()
+				ths.append(ryu.lib.hub.spawn(self.rhandle, dp, con))
+			except:
+				break
 		
-		s.close()
+		sock.close()
 		ryu.lib.hub.joinall(ths)
-		delete(self.activation[datapath.id])
 
 	def rhandle(self, datapath, sock):
 		msg_cls = dict()
