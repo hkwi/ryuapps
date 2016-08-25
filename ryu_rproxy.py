@@ -102,7 +102,7 @@ class RProxy(ryu.base.app_manager.RyuApp):
 				con, addr = sock.accept()
 				ths.append(ryu.lib.hub.spawn(self.rhandle, dp, con))
 			except:
-				break
+				continue
 		
 		sock.close()
 		ryu.lib.hub.joinall(ths)
