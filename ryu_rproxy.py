@@ -122,7 +122,8 @@ class RProxy(ryu.base.app_manager.RyuApp):
 		
 		xid = 0
 		sock.send(struct.pack("!BBHI", datapath.ofproto.OFP_VERSION, 0, 8, 1))
-		while self.accepting_sockets[datapath.id]:
+		dpid = datapath.id
+		while self.accepting_sockets[dpid]:
 			pmsg = sock.recv(8)
 			if not pmsg:
 				break
@@ -162,7 +163,7 @@ class RProxy(ryu.base.app_manager.RyuApp):
 						if rname:
 							reply_cls = msg_cls[rname]
 			
-			rmsgs = api.send_msg(self, RawMsg(datapath, pmsg),
+			rmsgs = api.send_msg(self, RawMsg(self.dpset.get(dpid), pmsg),
 					reply_cls=reply_cls,
 					reply_multi=reply_multi)
 			if reply_multi:
