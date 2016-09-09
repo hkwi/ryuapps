@@ -38,7 +38,7 @@ class RProxyHttp(ryu.app.wsgi.ControllerBase):
 		
 		return Response(json=data)
 	
-	@route("list_rproxy", "/rproxy/{dpid}")
+	@route("op_rproxy", "/rproxy/{dpid}")
 	def op_rproxy(self, req, dpid, **kwargs):
 		if dpid.lower().startswith("0x"):
 			dpid = int(dpid, 16)
