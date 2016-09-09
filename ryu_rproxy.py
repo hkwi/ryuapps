@@ -94,20 +94,20 @@ class RProxy(ryu.base.app_manager.RyuApp):
 		self.accepting_sockets[dpid] = None
 
 	def rproxy(self, dpid, sock):
-		dp = self.dpset.get(dpid)
 		sock.settimeout(3)
 		ths = []
 		while self.accepting_sockets[dpid]:
 			try:
 				con, addr = sock.accept()
-				ths.append(ryu.lib.hub.spawn(self.rhandle, dp, con))
+				ths.append(ryu.lib.hub.spawn(self.rhandle, dpid, con))
 			except:
 				continue
 		
 		sock.close()
 		ryu.lib.hub.joinall(ths)
 
-	def rhandle(self, datapath, sock):
+	def rhandle(self, dpid, sock):
+		datapath = self.dpset.get(dpid)
 		msg_cls = dict()
 		stats_cls = dict()
 		for name in dir(datapath.ofproto_parser):
@@ -122,7 +122,6 @@ class RProxy(ryu.base.app_manager.RyuApp):
 		
 		xid = 0
 		sock.send(struct.pack("!BBHI", datapath.ofproto.OFP_VERSION, 0, 8, 1))
-		dpid = datapath.id
 		while self.accepting_sockets[dpid]:
 			pmsg = sock.recv(8)
 			if not pmsg:
